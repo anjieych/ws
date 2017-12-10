@@ -12,6 +12,7 @@ import (
 
 	"github.com/gobwas/httphead"
 	"github.com/gobwas/pool/pbufio"
+	"sync"
 )
 
 // Constants used by ConnUpgrader.
@@ -267,7 +268,7 @@ type Upgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnRequest func(host, uri []byte) (err error, code int)
+	OnRequest func(host, uri []byte, conn io.Writer) (err error, code int)
 
 	// OnHeader is a callback that will be called after successful parsing of
 	// header, that is not used during WebSocket handshake procedure. That is,
@@ -278,7 +279,7 @@ type Upgrader struct {
 	//
 	// Returned value could be used to prevent processing request and response
 	// with appropriate http status.
-	OnHeader func(key, value []byte) (err error, code int)
+	OnHeader func(key, value []byte, conn io.Writer) (err error, code int)
 
 	// OnBeforeUpgrade is a callback that will be called before sending
 	// successful upgrade response.
@@ -299,6 +300,9 @@ type Upgrader struct {
 
 	// TODO(gobwas): maybe use here io.WriterTo or something similar instead of
 	// error missing header callback?
+
+	Users *sync.Map
+
 }
 
 type headerWriter struct {
@@ -442,7 +446,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 		case headerHost:
 			headerSeen |= headerSeenHost
 			if onRequest := u.OnRequest; onRequest != nil {
-				if e, c := onRequest(v, req.uri); e != nil {
+				if e, c := onRequest(v, req.uri,conn); e != nil {
 					err = e
 					code = c
 				}
@@ -512,7 +516,7 @@ func (u Upgrader) Upgrade(conn io.ReadWriter) (hs Handshake, err error) {
 
 		default:
 			if onHeader := u.OnHeader; onHeader != nil {
-				if e, c := onHeader(k, v); e != nil {
+				if e, c := onHeader(k, v,conn); e != nil {
 					err = e
 					code = c
 				}
